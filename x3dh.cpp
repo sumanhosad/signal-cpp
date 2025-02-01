@@ -1,139 +1,195 @@
-#include <cstring>
 #include <iostream>
-#include <sodium.h>
+#include <vector>
+#include <random>
+#include <cassert>
+#include <iomanip>
+#include <openssl/bn.h>  // Big number operations
 
-// Helper function to generate a key pair (public + secret)
-void generate_key_pair(unsigned char *public_key, unsigned char *secret_key) {
-  if (crypto_box_keypair(public_key, secret_key) != 0) {
-    std::cerr << "Keypair generation failed!" << std::endl;
-  }
+// secp256k1 parameters
+const char* P_HEX = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F"; // Prime field
+const char* A_HEX = "0"; // a = 0 in secp256k1
+const char* B_HEX = "7"; // b = 7 in secp256k1
+const char* GX_HEX = "79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"; // Generator x
+const char* GY_HEX = "483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8"; // Generator y
+const char* N_HEX = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"; // Order of the curve
+
+// Helper function: Convert hex to BIGNUM
+BIGNUM* hex_to_bn(const char* hex) {
+    BIGNUM* bn = BN_new();
+    if (!bn) {
+        std::cerr << "Failed to allocate BIGNUM" << std::endl;
+        exit(1);
+    }
+    if (!BN_hex2bn(&bn, hex)) {
+        std::cerr << "Failed to convert hex to BIGNUM" << std::endl;
+        exit(1);
+    }
+    return bn;
 }
 
-// Helper function to perform Diffie-Hellman key exchange and derive shared
-// secret
-void dh_exchange(const unsigned char *private_key,
-                 const unsigned char *public_key,
-                 unsigned char *shared_secret) {
-  if (crypto_scalarmult(shared_secret, private_key, public_key) != 0) {
-    std::cerr << "Diffie-Hellman exchange failed!" << std::endl;
-  }
+// Struct for elliptic curve points
+struct ECPoint {
+    BIGNUM* x;
+    BIGNUM* y;
+    
+    ECPoint() {
+        x = BN_new();
+        y = BN_new();
+        if (!x || !y) {
+            std::cerr << "Failed to allocate memory for ECPoint" << std::endl;
+            exit(1);
+        }
+    }
+    
+    ECPoint(const char* x_hex, const char* y_hex) {
+        x = hex_to_bn(x_hex);
+        y = hex_to_bn(y_hex);
+    }
+
+    ~ECPoint() {
+        if (x) BN_free(x);
+        if (y) BN_free(y);
+    }
+
+    void print() {
+        char* x_str = BN_bn2hex(x);
+        char* y_str = BN_bn2hex(y);
+        std::cout << "X: " << x_str << "\nY: " << y_str << "\n";
+        OPENSSL_free(x_str);
+        OPENSSL_free(y_str);
+    }
+};
+
+// Modular addition
+BIGNUM* mod_add(BIGNUM* a, BIGNUM* b, BIGNUM* p) {
+    assert(a && b && p);
+    BIGNUM* res = BN_new();
+    BN_CTX* ctx = BN_CTX_new();
+    if (!BN_mod_add(res, a, b, p, ctx)) {
+        std::cerr << "Failed to add numbers in modular space" << std::endl;
+        exit(1);
+    }
+    BN_CTX_free(ctx);
+    return res;
 }
 
-// Use HKDF to derive a session key from the shared secret
-void derive_session_key(const unsigned char *shared_secret,
-                        unsigned char *session_key) {
-  // For simplicity, we're using SHA-256 for key derivation
-  unsigned char info[] = "X3DH session key"; // Context for HKDF
-
-  // Derive a 32-byte session key using HKDF
-  if (crypto_kdf_derive_from_key(session_key, 32, 0, info, shared_secret) !=
-      0) {
-    std::cerr << "HKDF key derivation failed!" << std::endl;
-  }
+// Modular subtraction
+BIGNUM* mod_sub(BIGNUM* a, BIGNUM* b, BIGNUM* p) {
+    assert(a && b && p);
+    BIGNUM* res = BN_new();
+    BN_CTX* ctx = BN_CTX_new();
+    if (!BN_mod_sub(res, a, b, p, ctx)) {
+        std::cerr << "Failed to subtract numbers in modular space" << std::endl;
+        exit(1);
+    }
+    BN_CTX_free(ctx);
+    return res;
 }
 
-// Encrypt a message using a session key (AES)
-void encrypt_message(const unsigned char *session_key,
-                     const unsigned char *plaintext, unsigned char *ciphertext,
-                     size_t plaintext_len) {
-  unsigned char nonce[crypto_secretbox_NONCEBYTES];
-  randombytes_buf(nonce, sizeof nonce); // Generate a random nonce
-
-  if (crypto_secretbox_easy(ciphertext, plaintext, plaintext_len, nonce,
-                            session_key) != 0) {
-    std::cerr << "Encryption failed!" << std::endl;
-  }
+// Modular multiplication
+BIGNUM* mod_mul(BIGNUM* a, BIGNUM* b, BIGNUM* p) {
+    assert(a && b && p);
+    BIGNUM* res = BN_new();
+    BN_CTX* ctx = BN_CTX_new();
+    if (!BN_mod_mul(res, a, b, p, ctx)) {
+        std::cerr << "Failed to multiply numbers in modular space" << std::endl;
+        exit(1);
+    }
+    BN_CTX_free(ctx);
+    return res;
 }
 
-// Decrypt the message using the session key
-bool decrypt_message(const unsigned char *session_key,
-                     const unsigned char *ciphertext,
-                     unsigned char *decrypted_message, size_t ciphertext_len) {
-  unsigned char nonce[crypto_secretbox_NONCEBYTES];
-  std::memcpy(nonce, ciphertext,
-              crypto_secretbox_NONCEBYTES); // Extract the nonce
+// Modular inverse (Fermat's theorem: a^(p-2) mod p)
+BIGNUM* mod_inv(BIGNUM* a, BIGNUM* p) {
+    assert(a && p);
+    BIGNUM* res = BN_new();
+    BN_CTX* ctx = BN_CTX_new();
+    BIGNUM* exponent = BN_new();
+    BN_sub(exponent, p, BN_value_one());  // p-1
+    BN_sub(exponent, exponent, BN_value_one());  // p-2
+    if (!BN_mod_exp(res, a, exponent, p, ctx)) {
+        std::cerr << "Failed to compute modular inverse" << std::endl;
+        exit(1);
+    }
+    BN_free(exponent);
+    BN_CTX_free(ctx);
+    return res;
+}
 
-  if (crypto_secretbox_open_easy(decrypted_message,
-                                 ciphertext + crypto_secretbox_NONCEBYTES,
-                                 ciphertext_len - crypto_secretbox_NONCEBYTES,
-                                 nonce, session_key) != 0) {
-    std::cerr << "Decryption failed!" << std::endl;
-    return false;
-  }
-  return true;
+// Elliptic curve point addition
+ECPoint point_add(ECPoint P, ECPoint Q, BIGNUM* p) {
+    assert(P.x && P.y && Q.x && Q.y && p);
+    BN_CTX* ctx = BN_CTX_new();
+    BIGNUM* lambda = BN_new();
+    BIGNUM* num = mod_sub(Q.y, P.y, p);
+    BIGNUM* den = mod_sub(Q.x, P.x, p);
+    BIGNUM* den_inv = mod_inv(den, p);
+    if (!BN_mod_mul(lambda, num, den_inv, p, ctx)) {
+        std::cerr << "Failed to compute lambda in point addition" << std::endl;
+        exit(1);
+    }
+
+    BIGNUM* x3 = mod_sub(mod_mul(lambda, lambda, p), mod_add(P.x, Q.x, p), p);
+    BIGNUM* y3 = mod_sub(mod_mul(lambda, mod_sub(P.x, x3, p), p), P.y, p);
+
+    ECPoint R;
+    BN_copy(R.x, x3);
+    BN_copy(R.y, y3);
+
+    BN_free(lambda);
+    BN_free(num);
+    BN_free(den);
+    BN_free(den_inv);
+    BN_free(x3);
+    BN_free(y3);
+    BN_CTX_free(ctx);
+
+    return R;
+}
+
+// Scalar multiplication (double-and-add)
+ECPoint scalar_mult(BIGNUM* k, ECPoint P, BIGNUM* p) {
+    assert(k && P.x && P.y && p);
+    ECPoint R;
+    ECPoint Q = P;
+
+    for (int i = BN_num_bits(k) - 1; i >= 0; i--) {
+        R = point_add(R, R, p);
+        if (BN_is_bit_set(k, i)) {
+            R = point_add(R, Q, p);
+        }
+    }
+    return R;
 }
 
 int main() {
-  // Initialize libsodium
-  if (sodium_init() == -1) {
-    std::cerr << "libsodium initialization failed!" << std::endl;
-    return -1;
-  }
+    // Initialize variables
+    BIGNUM* p = hex_to_bn(P_HEX);
+    BIGNUM* n = hex_to_bn(N_HEX);
 
-  // Alice's and Bob's identity and pre-keys
-  unsigned char alice_identity_key[crypto_box_SECRETKEYBYTES];
-  unsigned char alice_identity_public[crypto_box_PUBLICKEYBYTES];
-  unsigned char alice_pre_key[crypto_box_SECRETKEYBYTES];
-  unsigned char alice_pre_public[crypto_box_PUBLICKEYBYTES];
+    ECPoint G(GX_HEX, GY_HEX);
 
-  unsigned char bob_identity_key[crypto_box_SECRETKEYBYTES];
-  unsigned char bob_identity_public[crypto_box_PUBLICKEYBYTES];
-  unsigned char bob_pre_key[crypto_box_SECRETKEYBYTES];
-  unsigned char bob_pre_public[crypto_box_PUBLICKEYBYTES];
+    // Generate random private keys for Alice and Bob
+    BIGNUM* alice_private = BN_new();
+    BIGNUM* bob_private = BN_new();
+    if (!BN_rand_range(alice_private, n) || !BN_rand_range(bob_private, n)) {
+        std::cerr << "Failed to generate random private keys" << std::endl;
+        exit(1);
+    }
 
-  // Generate key pairs for Alice and Bob
-  generate_key_pair(alice_identity_public, alice_identity_key);
-  generate_key_pair(alice_pre_public, alice_pre_key);
-  generate_key_pair(bob_identity_public, bob_identity_key);
-  generate_key_pair(bob_pre_public, bob_pre_key);
+    // Compute public keys
+    ECPoint alice_public = scalar_mult(alice_private, G, p);
+    ECPoint bob_public = scalar_mult(bob_private, G, p);
 
-  // Alice and Bob exchange keys and perform Diffie-Hellman exchange
-  unsigned char alice_shared_secret[crypto_scalarmult_BYTES];
-  unsigned char bob_shared_secret[crypto_scalarmult_BYTES];
+    // Compute shared secrets
+    ECPoint shared_secret_alice = scalar_mult(alice_private, bob_public, p);
+    ECPoint shared_secret_bob = scalar_mult(bob_private, alice_public, p);
 
-  // Alice calculates shared secret (her private + Bob's public)
-  dh_exchange(alice_identity_key, bob_pre_public, alice_shared_secret);
+    std::cout << "Alice Public Key:\n"; alice_public.print();
+    std::cout << "Bob Public Key:\n"; bob_public.print();
+    std::cout << "Shared Secret (Alice's view):\n"; shared_secret_alice.print();
+    std::cout << "Shared Secret (Bob's view):\n"; shared_secret_bob.print();
 
-  // Bob calculates shared secret (his private + Alice's public)
-  dh_exchange(bob_identity_key, alice_pre_public, bob_shared_secret);
-
-  // Both Alice and Bob should have the same shared secret (verify equality)
-  if (memcmp(alice_shared_secret, bob_shared_secret, crypto_scalarmult_BYTES) !=
-      0) {
-    std::cerr << "Shared secrets do not match!" << std::endl;
-    return -1;
-  }
-  std::cout << "Shared secret match verified!" << std::endl;
-
-  // Derive session keys from the shared secret using HKDF
-  unsigned char alice_session_key[crypto_secretbox_KEYBYTES];
-  unsigned char bob_session_key[crypto_secretbox_KEYBYTES];
-
-  derive_session_key(alice_shared_secret, alice_session_key);
-  derive_session_key(bob_shared_secret, bob_session_key);
-
-  // Check if session keys match
-  if (memcmp(alice_session_key, bob_session_key, crypto_secretbox_KEYBYTES) !=
-      0) {
-    std::cerr << "Session keys do not match!" << std::endl;
-    return -1;
-  }
-  std::cout << "Session key match verified!" << std::endl;
-
-  // Encrypt and Decrypt a message using the session key
-  const char *message = "Hello, Bob!";
-  unsigned char encrypted_message[crypto_secretbox_MACBYTES + strlen(message)];
-  unsigned char decrypted_message[strlen(message) + 1];
-
-  encrypt_message(alice_session_key, (const unsigned char *)message,
-                  encrypted_message, strlen(message));
-
-  if (decrypt_message(bob_session_key, encrypted_message, decrypted_message,
-                      sizeof(encrypted_message))) {
-    std::cout << "Decrypted message: " << decrypted_message << std::endl;
-  } else {
-    std::cerr << "Failed to decrypt message!" << std::endl;
-  }
-
-  return 0;
+    return 0;
 }
+
