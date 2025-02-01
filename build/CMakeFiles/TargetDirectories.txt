@@ -1,0 +1,3 @@
+/home/injustice/Documents/projects/signal-cpp/build/CMakeFiles/keygen.dir
+/home/injustice/Documents/projects/signal-cpp/build/CMakeFiles/edit_cache.dir
+/home/injustice/Documents/projects/signal-cpp/build/CMakeFiles/rebuild_cache.dir
