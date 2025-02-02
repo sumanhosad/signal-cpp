@@ -1,9 +1,5 @@
 #include "includes/print_hex.h"
 #include "includes/x3dh.h"
-#include <cstring>
-#include <iostream>
-#include <sodium.h>
-#include <vector>
 
 // Perform the key exchange (X3DH key exchange process)
 std::vector<uint8_t> perform_key_exchange(const unsigned char *identity_public,
@@ -150,4 +146,3 @@ int main() {
 
   return 0;
 }
-

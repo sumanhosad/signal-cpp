@@ -17,9 +17,10 @@ public:
                                 unsigned char *private_key,
                                 unsigned char *signature,
                                 unsigned char *identity_private_key);
-  std::vector<uint8_t> perform_key_exchange(
-      const unsigned char *identity_public, const unsigned char *spk_public,
-      const unsigned char *opk_public, const unsigned char *ek_private);
+  std::vector<uint8_t> X3dH_exchange(const unsigned char *identity_public,
+                                     const unsigned char *spk_public,
+                                     const unsigned char *opk_public,
+                                     const unsigned char *ek_private);
 
   void generate_ephemeral_keys(unsigned char *public_key,
                                unsigned char *private_key);

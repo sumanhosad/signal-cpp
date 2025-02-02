@@ -33,12 +33,21 @@ void X3DH::generate_ephemeral_keys(unsigned char *public_key,
   crypto_scalarmult_base(public_key,
                          private_key); // Compute public key
 }
-std::vector<uint8_t> X3DH::perform_key_exchange(
-    const unsigned char *identity_public, const unsigned char *spk_public,
-    const unsigned char *opk_public, const unsigned char *ek_private) {
-  std::vector<uint8_t> sharedSecret(crypto_scalarmult_BYTES);
-  crypto_scalarmult(sharedSecret.data(), ek_private, identity_public);
-  return sharedSecret;
+
+std::vector<uint8_t> X3DH::X3dH_exchange(const unsigned char *identity_public,
+                                         const unsigned char *spk_public,
+                                         const unsigned char *opk_public,
+                                         const unsigned char *ek_private) {
+  unsigned char shared_secret[crypto_secretbox_KEYBYTES];
+
+  // Derive shared secret via Diffie-Hellman (simulated with crypto_scalarmult)
+  if (crypto_scalarmult(shared_secret, ek_private, opk_public) != 0) {
+    std::cerr << "Error during key exchange!" << std::endl;
+    exit(1);
+  }
+
+  return std::vector<uint8_t>(shared_secret,
+                              shared_secret + crypto_secretbox_KEYBYTES);
 }
 
 X3DH::~X3DH() {}
