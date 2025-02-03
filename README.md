@@ -1,157 +1,146 @@
-## signal-cpp
+# **signal-cpp**
 
 ---
 
-# X3DH C++ Library
+Not yet fully completed but stay tuned for update!!!
 
-The **X3DH C++ Library** implements the Extended Triple Diffie–Hellman (X3DH) key agreement protocol using the [libsodium](https://libsodium.gitbook.io/doc/) cryptographic library. This library provides functions for generating identity keys, signed pre-keys, one-time pre-keys, and ephemeral keys required for the X3DH protocol. It is designed to facilitate secure, asynchronous key exchanges in applications such as secure messaging.
+---
 
-## Features
+## **X3DH & Double Ratchet C++ Library**
 
-- **Identity Key Generation:**  
-  Create a long-term identity key pair that uniquely identifies a user.
+`signal-cpp` is a C++ implementation of **X3DH (Extended Triple Diffie-Hellman) and the Double Ratchet Algorithm**, designed for secure, asynchronous key exchange in encrypted messaging applications. It leverages **libsodium** for cryptographic operations.
 
-- **Signed Pre-Key Generation:**  
-  Generate a medium-term key pair and sign it using the identity private key to ensure authenticity.
+---
 
-- **One-Time Pre-Key Generation:**  
-  Generate a short-lived key pair for extra forward secrecy (one-time use per session).
+## **Features**
 
-- **Ephemeral Key Generation:**  
-  Generate a session-specific key pair to derive a unique shared secret per session.
+✅ **X3DH Key Exchange** (Identity, Signed Pre-Key, One-Time Pre-Key, Ephemeral Key)  
+✅ **Double Ratchet Algorithm** for forward secrecy  
+✅ **Secure Message Encryption & Key Derivation**
 
-## Prerequisites
+---
 
-- A C++ compiler supporting C++11 (or later).
-- [libsodium](https://libsodium.gitbook.io/doc/) installed on your system.
-- CMake (or your preferred build system) for building the project.
+## **Prerequisites**
 
-## Installation
+- C++11+ compiler
+- [libsodium](https://libsodium.gitbook.io/doc/) installed
+- CMake (optional for building)
 
-1. **Install libsodium**
+### **Install libsodium**
 
-   On Ubuntu:
+On Ubuntu:
 
-   ```bash
-   sudo apt-get update
-   sudo apt-get install libsodium-dev
-   ```
-
-   On macOS (using Homebrew):
-
-   ```bash
-   brew install libsodium
-   ```
-
-2. **Clone the Repository**
-
-   ```bash
-   git clone https://github.com/yourusername/x3dh-cpp-library.git
-   cd x3dh-cpp-library
-   ```
-
-3. **Build the Library**
-
-   If using CMake:
-
-   ```bash
-   mkdir build && cd build
-   cmake ..
-   make
-   ```
-
-## Usage
-
-Include the header in your C++ project:
-
-```cpp
-#include "../includes/x3dh.h"
+```sh
+sudo apt-get update && sudo apt-get install libsodium-dev
 ```
 
-### Example Code
+On macOS:
 
-Below is an example of how to use the X3DH library to generate keys:
-
-```cpp
-#include <iostream>
-#include "../includes/x3dh.h"
-
-int main() {
-    // Allocate buffers for keys and signatures (using crypto_scalarmult_BYTES from libsodium)
-    unsigned char identity_public[crypto_scalarmult_BYTES];
-    unsigned char identity_private[crypto_scalarmult_BYTES];
-    unsigned char spk_public[crypto_scalarmult_BYTES];
-    unsigned char spk_private[crypto_scalarmult_BYTES];
-    unsigned char spk_signature[crypto_sign_BYTES]; // Adjust size as per crypto_sign_detached
-    unsigned char opk_public[crypto_scalarmult_BYTES];
-    unsigned char opk_private[crypto_scalarmult_BYTES];
-    unsigned char ek_public[crypto_scalarmult_BYTES];
-    unsigned char ek_private[crypto_scalarmult_BYTES];
-
-    // Initialize libsodium
-    if (sodium_init() < 0) {
-        std::cerr << "libsodium initialization failed" << std::endl;
-        return 1;
-    }
-
-    // Create X3DH instance (using identity keys)
-    X3DH x3dh(identity_public, identity_private);
-
-    // Generate a Signed Pre-Key, signing it with the identity private key
-    x3dh.generate_signed_pre_keys(spk_public, spk_private, spk_signature, identity_private);
-
-    // Generate a One-Time Pre-Key
-    x3dh.generate_pre_keys(opk_public, opk_private);
-
-    // Generate an Ephemeral Key for a session
-    x3dh.generate_ephemeral_keys(ek_public, ek_private);
-
-    // Output keys in hex format (example function print_hex is assumed)
-    // print_hex("Identity Public", identity_public, crypto_scalarmult_BYTES);
-    // print_hex("Signed Pre-Key Public", spk_public, crypto_scalarmult_BYTES);
-    // print_hex("One-Time Pre-Key Public", opk_public, crypto_scalarmult_BYTES);
-    // print_hex("Ephemeral Key Public", ek_public, crypto_scalarmult_BYTES);
-
-    std::cout << "X3DH keys generated successfully." << std::endl;
-    return 0;
-}
+```sh
+brew install libsodium
 ```
 
-### Explanation of the Functions
+---
 
-- **Constructor `X3DH::X3DH(unsigned char *public_key, unsigned char *private_key)`**  
-  Generates an identity key pair.
+## **Building the Library**
 
-  - _Input:_ Buffers for the public and private key.
-  - _Action:_ Fills the private key buffer with random bytes and computes the public key via scalar multiplication with the curve's base point.
+```sh
+git clone https://github.com/sumanhosad/signal-cpp.git
+cd signal-cpp
+mkdir build && cd build
+cmake ..
+make
+```
 
-- **`generate_signed_pre_keys` Function**  
-  Generates a signed pre-key pair and signs the public pre-key with the identity private key.
+---
 
-  - _Input:_ Buffers for the public key, private key, signature, and the identity private key.
-  - _Action:_ Generates a random scalar for the private key, computes the public key, and produces a signature using `crypto_sign_detached`.
+## **Using the Library**
 
-- **`generate_pre_keys` Function**  
-  Generates a one-time pre-key pair for additional forward secrecy.
+### **1. Generating X3DH Keys**
 
-  - _Input:_ Buffers for the public and private keys.
-  - _Action:_ Fills the private key buffer with random bytes and computes the public key.
+To establish a secure session, X3DH generates the following keys:
 
-- **`generate_ephemeral_keys` Function**  
-  Generates an ephemeral key pair for a session.
-  - _Input:_ Buffers for the public and private keys.
-  - _Action:_ Fills the private key buffer with random bytes and computes the public key.
+- **Identity Key Pair (IK):** Long-term key pair to identify a user.
+- **Signed Pre-Key (SPK):** A medium-term key pair signed using the identity private key for authenticity.
+- **One-Time Pre-Key (OPK):** A short-lived key pair for added forward secrecy.
+- **Ephemeral Key (EK):** A session-specific key for deriving a shared secret.
 
-## API Reference
+#### **Generating Keys in C++**
 
-For complete details, refer to the header file [`x3dh.h`](../includes/x3dh.h), which defines the class `X3DH` and its member functions.
+```cpp
+#include "x3dh.h"
 
-## License
+unsigned char identity_public[crypto_scalarmult_BYTES];
+unsigned char identity_private[crypto_scalarmult_BYTES];
+unsigned char spk_public[crypto_scalarmult_BYTES];
+unsigned char spk_private[crypto_scalarmult_BYTES];
+unsigned char spk_signature[crypto_sign_BYTES];
+unsigned char opk_public[crypto_scalarmult_BYTES];
+unsigned char opk_private[crypto_scalarmult_BYTES];
+unsigned char ek_public[crypto_scalarmult_BYTES];
+unsigned char ek_private[crypto_scalarmult_BYTES];
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+// Initialize X3DH instance and generate keys
+X3DH x3dh(identity_public, identity_private);
+x3dh.generate_signed_pre_keys(spk_public, spk_private, spk_signature, identity_private);
+x3dh.generate_pre_keys(opk_public, opk_private);
+x3dh.generate_ephemeral_keys(ek_public, ek_private);
+```
 
-## Contributing
+🔹 _Identity keys are long-term, while the others are rotated periodically._
 
-Contributions are welcome! Please open an issue or submit a pull request for any bugs, improvements, or additional features.
+---
+
+### **2. Establishing a Shared Secret (X3DH Exchange)**
+
+Once both parties generate their keys, they can perform an **X3DH key exchange** to derive a **shared secret**:
+
+```cpp
+std::vector<uint8_t> shared_secret = x3dh.X3dH_exchange(identity_public, spk_public, opk_public, ek_private);
+```
+
+🔹 _The shared secret is used to initialize the Double Ratchet protocol for secure messaging._
+
+---
+
+### **3. Initializing the Double Ratchet Algorithm**
+
+Once the shared secret is established, the **Double Ratchet** is used to derive new encryption keys for each message:
+
+```cpp
+DoubleRatchet ratchet;
+ratchet.initialize(shared_secret);
+```
+
+The Double Ratchet ensures:  
+✔ **Forward Secrecy**: Each message uses a new encryption key.  
+✔ **Post-Compromise Security**: If keys are compromised, future messages remain secure.
+
+---
+
+### **4. Ratcheting (Sending & Receiving Messages)**
+
+Whenever a message is sent or received, the key state is updated using the ratchet mechanism:
+
+```cpp
+ratchet.ratchet_send();    // Update keys before sending a message
+ratchet.ratchet_receive(); // Update keys after receiving a message
+```
+
+Each time `ratchet_send()` or `ratchet_receive()` is called, new **root keys, chain keys, and message keys** are derived.
+
+---
+
+## **Security Considerations**
+
+🔒 **Regularly rotate pre-keys** to prevent replay attacks.  
+🔒 **Use ephemeral keys** to prevent long-term compromise.  
+🔒 **Ensure signatures are verified** to prevent MITM attacks.
+
+---
+
+## **License & Contributions**
+
+📜 Licensed under **MIT License**. Contributions are welcome! 🚀
 
 ---
