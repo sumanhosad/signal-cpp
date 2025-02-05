@@ -1,79 +1,86 @@
-#include <openssl/aes.h>
-#include <openssl/evp.h>
-#include <openssl/rand.h>
-#include <openssl/hmac.h>
+#include <sodium.h>
 #include <iostream>
-#include <cstring>
+#include <vector>
+#include <iomanip>
 
-// AES encryption function using EVP (OpenSSL 3.x recommended)
-void aes_encrypt(const unsigned char* plaintext, unsigned char* ciphertext, const unsigned char* key, const unsigned char* iv) {
-    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), nullptr, key, iv); // AES 128 CBC mode
-    int len = 0;
-    EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, strlen(reinterpret_cast<const char*>(plaintext)));
-    int ciphertext_len = len;
-    EVP_EncryptFinal_ex(ctx, ciphertext + len, &len);
-    ciphertext_len += len;
-    EVP_CIPHER_CTX_free(ctx);
-}
-
-// AES decryption function using EVP (OpenSSL 3.x recommended)
-void aes_decrypt(const unsigned char* ciphertext, unsigned char* plaintext, const unsigned char* key, const unsigned char* iv) {
-    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    EVP_DecryptInit_ex(ctx, EVP_aes_128_cbc(), nullptr, key, iv); // AES 128 CBC mode
-    int len = 0;
-    EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, strlen(reinterpret_cast<const char*>(ciphertext)));
-    int plaintext_len = len;
-    EVP_DecryptFinal_ex(ctx, plaintext + len, &len);
-    plaintext_len += len;
-    EVP_CIPHER_CTX_free(ctx);
-}
-
-// HMAC-SHA256 function for message authentication (using the OpenSSL 3.x API)
-void hmac_sha256(const unsigned char* message, size_t message_len, const unsigned char* key, size_t key_len, unsigned char* out_hmac) {
-    HMAC_CTX* ctx = HMAC_CTX_new();
-    HMAC_Init_ex(ctx, key, key_len, EVP_sha256(), nullptr);
-    HMAC_Update(ctx, message, message_len);
-    unsigned int len = 32; // SHA-256 output size
-    HMAC_Final(ctx, out_hmac, &len);
-    HMAC_CTX_free(ctx);
-}
-
-// Print function to display byte data in hex format
-void print_hex(const unsigned char* data, size_t len) {
-    for (size_t i = 0; i < len; ++i) {
-        printf("%02x", data[i]);
+// Function to print bytes in hex format
+void print_hex(const std::vector<uint8_t>& data) {
+    for (uint8_t byte : data) {
+        std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)byte;
     }
-    printf("\n");
+    std::cout << std::dec << std::endl; // Reset back to decimal
 }
 
+class AESGCM {
+public:
+    std::vector<uint8_t> key;
+    std::vector<uint8_t> nonce;
+
+    // Constructor: Generates a new key if none is provided
+    AESGCM(const std::vector<uint8_t>& provided_key = {}) {
+        if (provided_key.empty()) {
+            key.resize(crypto_aead_aes256gcm_KEYBYTES);
+            randombytes_buf(key.data(), key.size());
+            std::cout << "Generated Key: ";
+            print_hex(key);
+        } else {
+            key = provided_key;
+        }
+        
+        nonce.resize(crypto_aead_aes256gcm_NPUBBYTES);
+        randombytes_buf(nonce.data(), nonce.size());
+    }
+
+    // Encrypt function
+    std::vector<uint8_t> encrypt(const std::string& message) {
+        std::vector<uint8_t> plaintext(message.begin(), message.end());
+        std::vector<uint8_t> ciphertext(plaintext.size() + crypto_aead_aes256gcm_ABYTES);
+
+        unsigned long long ciphertext_len;
+        crypto_aead_aes256gcm_encrypt(ciphertext.data(), &ciphertext_len,
+                                      plaintext.data(), plaintext.size(),
+                                      nullptr, 0, // No additional data (AAD)
+                                      nullptr, nonce.data(), key.data());
+
+        return ciphertext;
+    }
+
+    // Decrypt function
+    std::string decrypt(const std::vector<uint8_t>& ciphertext) {
+        std::vector<uint8_t> plaintext(ciphertext.size() - crypto_aead_aes256gcm_ABYTES);
+
+        unsigned long long plaintext_len;
+        if (crypto_aead_aes256gcm_decrypt(plaintext.data(), &plaintext_len,
+                                          nullptr, ciphertext.data(), ciphertext.size(),
+                                          nullptr, 0, // No additional data (AAD)
+                                          nonce.data(), key.data()) != 0) {
+            throw std::runtime_error("Decryption failed");
+        }
+
+        return std::string(plaintext.begin(), plaintext.end());
+    }
+};
+
+// Example Usage
 int main() {
-    // Example data
-    unsigned char key[16] = {0x00}; // Message key (128-bit key)
-    unsigned char iv[AES_BLOCK_SIZE] = {0x00}; // Initialization vector (16 bytes for AES)
+    if (sodium_init() < 0) {
+        std::cerr << "Sodium library could not be initialized!" << std::endl;
+        return 1;
+    }
 
-    const char* message = "This isfsafhjfafhjsjfskfgopwutwetuyupwertpewrotuu   eytrprewupotuwetrph a secret message!";
-    size_t message_len = strlen(message);
+    std::string message = "HellofddhjfhsffhdsfjhdshsfjfgaghSignal!";
 
-    // Step 1: Encrypt the message using AES
-    unsigned char ciphertext[128];
-    aes_encrypt(reinterpret_cast<const unsigned char*>(message), ciphertext, key, iv);
+    // Using AES-GCM with a random key
+    AESGCM aes;
+    std::vector<uint8_t> encrypted = aes.encrypt(message);
+    std::string decrypted = aes.decrypt(encrypted);
 
-    std::cout << "Encrypted Message (Ciphertext): ";
-    print_hex(ciphertext, message_len);
+    std::cout << "Original: " << message << std::endl;
 
-    // Step 2: Compute the HMAC-SHA256 for the ciphertext
-    unsigned char hmac_result[32];
-    hmac_sha256(ciphertext, message_len, key, sizeof(key), hmac_result);
+    std::cout << "Encrypted (Hex): ";
+    print_hex(encrypted);
 
-    std::cout << "HMAC-SHA256 of Ciphertext: ";
-    print_hex(hmac_result, 32);
-
-    // Step 3: Decrypt the message using AES (for verification)
-    unsigned char decrypted_text[128];
-    aes_decrypt(ciphertext, decrypted_text, key, iv);
-
-    std::cout << "Decrypted Message: " << decrypted_text << std::endl;
+    std::cout << "Decrypted: " << decrypted << std::endl;
 
     return 0;
 }
