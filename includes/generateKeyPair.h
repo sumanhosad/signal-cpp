@@ -6,8 +6,14 @@
 #include <iostream>
 #include <vector>
 
-// Structure to hold a one‑time pre key pair generated via crypto_box_keypair.
+// Structure to hold a one‑time pre key pair (Curve25519).
 struct OneTimePreKey {
+    unsigned char publicKey[crypto_box_PUBLICKEYBYTES];   // 32 bytes
+    unsigned char privateKey[crypto_box_SECRETKEYBYTES];    // 32 bytes
+};
+
+// Structure to hold an ephemeral key pair (Curve25519).
+struct EphemeralKey {
     unsigned char publicKey[crypto_box_PUBLICKEYBYTES];   // 32 bytes
     unsigned char privateKey[crypto_box_SECRETKEYBYTES];    // 32 bytes
 };
@@ -19,17 +25,18 @@ public:
     unsigned char identityPublicKey[crypto_sign_PUBLICKEYBYTES];
     unsigned char identityPrivateKey[crypto_sign_SECRETKEYBYTES];
 
-    // Signed pre key pair (Ed25519): medium-term key pair.
-    unsigned char signedPrePublicKey[crypto_sign_PUBLICKEYBYTES];
-    unsigned char signedPrePrivateKey[crypto_sign_SECRETKEYBYTES];
+    // Signed pre key pair (Curve25519): medium-term key pair.
+    // Both public and private keys are 32 bytes.
+    unsigned char signedPrePublicKey[crypto_box_PUBLICKEYBYTES];
+    unsigned char signedPrePrivateKey[crypto_box_SECRETKEYBYTES];
 
-    // Signature over the signed pre key public component (64 bytes).
+    // Signature (Ed25519) over the signed pre key's public component (64 bytes).
     unsigned char signedPreKeySignature[crypto_sign_BYTES];
 
-    // One-time pre keys (ephemeral Curve25519 keys).
+    // One-time pre keys (Curve25519).
     std::vector<OneTimePreKey> oneTimePreKeys;
 
-    // Generates the identity key pair.
+    // Generates the identity key pair using Ed25519.
     // Returns 1 on success, 0 on failure.
     int generateIdentityKey() {
         if (sodium_init() < 0) {
@@ -43,15 +50,15 @@ public:
         return 1;
     }
 
-    // Generates the signed pre key pair and signs its public component using the identity key.
+    // Generates the signed pre key pair using Curve25519 and signs its public component.
     // Must call generateIdentityKey() first.
     // Returns 1 on success, 0 on failure.
     int generateSignedPreKey() {
-        if (crypto_sign_keypair(signedPrePublicKey, signedPrePrivateKey) != 0) {
+        if (crypto_box_keypair(signedPrePublicKey, signedPrePrivateKey) != 0) {
             std::cerr << "Signed pre key pair generation failed." << std::endl;
             return 0;
         }
-        // Sign the signed pre key's public component using the identity private key.
+        // Sign the signed pre key's public component using the identity private key (Ed25519).
         if (crypto_sign_detached(signedPreKeySignature, nullptr,
                                    signedPrePublicKey, sizeof(signedPrePublicKey),
                                    identityPrivateKey) != 0) {
@@ -77,6 +84,18 @@ public:
         return 1;
     }
 
+    // Generates an ephemeral key pair (Curve25519) for session establishment.
+    // Ephemeral keys are used to derive shared secrets in a forward-secret manner.
+    // Returns an EphemeralKey struct containing a 32-byte public key and 32-byte private key.
+    EphemeralKey generateEphemeralKey() {
+        EphemeralKey eKey;
+        if (crypto_box_keypair(eKey.publicKey, eKey.privateKey) != 0) {
+            std::cerr << "Ephemeral key generation failed." << std::endl;
+            // Depending on your error handling strategy, you might throw an exception or abort.
+        }
+        return eKey;
+    }
+
     // Generic helper: verifies a detached signature.
     // Returns true if the signature is valid; false otherwise.
     bool verifySignature(const unsigned char* message, size_t messageLen,
@@ -84,7 +103,7 @@ public:
         return crypto_sign_verify_detached(signature, message, messageLen, verifyKey) == 0;
     }
 
-    // Verifies that the signed pre key public component was properly signed by the identity key.
+    // Verifies that the signed pre key's public component was properly signed by the identity key.
     bool verifySignedPreKey() {
         return verifySignature(signedPrePublicKey, sizeof(signedPrePublicKey),
                                signedPreKeySignature, identityPublicKey);
@@ -92,3 +111,4 @@ public:
 };
 
 #endif // SIGNAL_KEY_GENERATOR_H
+
