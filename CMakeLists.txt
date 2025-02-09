@@ -20,6 +20,7 @@ link_directories(${LIBSODIUM_LIBRARY_DIRS})
 # Add the executable target.
 # The main source is "example.cpp" in the project root.
 add_executable(x3dh x3dh.cpp)
+add_executable(signal signal.cpp )
 
 # (Optional) If you have additional source files in the src directory, you can add them:
 # file(GLOB SRC_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
@@ -27,4 +28,5 @@ add_executable(x3dh x3dh.cpp)
 
 # Link libsodium.
 target_link_libraries(x3dh ${LIBSODIUM_LIBRARIES})
+target_link_libraries(signal ${LIBSODIUM_LIBRARIES})
 
