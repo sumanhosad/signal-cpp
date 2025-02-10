@@ -1,6 +1,7 @@
 #ifndef DOUBLERATCHET_H
 #define DOUBLERATCHET_H
 
+#include "aes.h" // Use the external AES-GCM functions defined in aes.h
 #include <cstddef>
 #include <cstring>
 #include <iostream>
@@ -148,59 +149,58 @@ public:
   }
 
   // --- Encrypt a Message ---
-  // Derives a message key from the sending chain and encrypts the plaintext
-  // using crypto_aead_chacha20poly1305. A random nonce is generated.
+  // Derives a message key from the sending chain and uses the aes.h functions
+  // to encrypt the plaintext using AES-GCM. A random nonce is generated.
   // Parameters:
   //   plaintext/plaintextLen: message to encrypt.
-  //   ciphertext: pointer reference to the allocated ciphertext buffer.
-  //   ciphertextLen: length of ciphertext (plaintext length + MAC).
-  //   nonce: output nonce used during encryption.
+  //   ciphertext: pointer reference to the allocated ciphertext buffer
+  //   (allocated via malloc). ciphertextLen: length of ciphertext (plaintext
+  //   length plus authentication tag). nonce: output nonce used during
+  //   encryption.
   // Returns true on success.
   bool encryptMessage(const unsigned char *plaintext, size_t plaintextLen,
                       unsigned char *&ciphertext, size_t &ciphertextLen,
                       unsigned char nonce[NONCE_BYTES]) {
     unsigned char messageKey[MESSAGE_KEY_BYTES];
     advanceSendingChain(messageKey);
+
     // Generate random nonce.
     randombytes_buf(nonce, NONCE_BYTES);
-    // Allocate ciphertext buffer.
-    ciphertextLen = plaintextLen + MAC_BYTES;
-    ciphertext = new unsigned char[ciphertextLen];
-    unsigned long long actualCiphertextLen = 0;
-    if (crypto_aead_chacha20poly1305_ietf_encrypt(
-            ciphertext, &actualCiphertextLen, plaintext, plaintextLen, NULL, 0,
-            NULL, nonce, messageKey) != 0) {
-      std::cerr << "Encryption failed in double ratchet." << std::endl;
+
+    // Use the AES-GCM encryption function defined in aes.h.
+    ciphertext = aes_gcm_encrypt(plaintext, plaintextLen, messageKey, nonce,
+                                 &ciphertextLen);
+    if (ciphertext == NULL) {
+      std::cerr << "Encryption failed in AES-GCM." << std::endl;
       return false;
     }
-    ciphertextLen = actualCiphertextLen;
     return true;
   }
 
   // --- Decrypt a Message ---
-  // Derives a message key from the receiving chain and decrypts the ciphertext.
-  // Parameters:
+  // Derives a message key from the receiving chain and uses the aes.h functions
+  // to decrypt the ciphertext using AES-GCM. Parameters:
   //   ciphertext/ciphertextLen: the encrypted message.
-  //   nonce: nonce used for encryption.
-  //   plaintext: pointer reference to the allocated plaintext buffer.
-  //   plaintextLen: length of the decrypted plaintext.
+  //   nonce: nonce used during encryption.
+  //   plaintext: pointer reference to the allocated plaintext buffer (allocated
+  //   via malloc). plaintextLen: length of the decrypted plaintext.
   // Returns true on success.
   bool decryptMessage(const unsigned char *ciphertext, size_t ciphertextLen,
                       const unsigned char nonce[NONCE_BYTES],
                       unsigned char *&plaintext, size_t &plaintextLen) {
     unsigned char messageKey[MESSAGE_KEY_BYTES];
     advanceReceivingChain(messageKey);
-    plaintext = new unsigned char[ciphertextLen]; // worst-case allocation.
-    unsigned long long actualPlaintextLen = 0;
-    if (crypto_aead_chacha20poly1305_ietf_decrypt(
-            plaintext, &actualPlaintextLen, NULL, ciphertext, ciphertextLen,
-            NULL, 0, nonce, messageKey) != 0) {
-      std::cerr << "Decryption failed in double ratchet." << std::endl;
+
+    // Use the AES-GCM decryption function defined in aes.h.
+    plaintext = aes_gcm_decrypt(ciphertext, ciphertextLen, messageKey, nonce,
+                                &plaintextLen);
+    if (plaintext == NULL) {
+      std::cerr << "Decryption failed in AES-GCM." << std::endl;
       return false;
     }
-    plaintextLen = actualPlaintextLen;
     return true;
   }
 };
 
 #endif // DOUBLERATCHET_H
+
