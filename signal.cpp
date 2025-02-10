@@ -68,7 +68,7 @@ int main() {
     
     // --- Message Encryption/Decryption using Double Ratchet ---
     // Alice encrypts a message using her double ratchet state.
-    const char* message = "Hellfsdhfsfskhgggfsghjlko Bob, this is Alice.";
+    const char* message = "Hello Bob, this is Alice.";
     unsigned char *ciphertext = nullptr;
     size_t ciphertextLen = 0;
     unsigned char nonce[NONCE_BYTES];
