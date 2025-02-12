@@ -50,6 +50,7 @@ int main(int argc, char *argv[]) {
   unsigned char publicKey[crypto_box_PUBLICKEYBYTES]; // 32 bytes
   unsigned char identityPublicKey[crypto_sign_PUBLICKEYBYTES];
   unsigned char signedPrePublicKey[crypto_box_PUBLICKEYBYTES];
+  unsigned char dhPublicKey[crypto_box_PUBLICKEYBYTES];
   alice.printAllKeys();
   std::cout << "identityKey";
   std::cin >> temp;
@@ -78,8 +79,10 @@ int main(int argc, char *argv[]) {
   }
   printHex(alice.dratchet.dhPublicKey, "dh public");
   std::cout << "dh puclic key";
-  std::cin >> bob.dratchet.dhPublicKey;
-  alice.initDoubleRatchet(alice_session_key, bob.dratchet.dhPublicKey);
+  std::cin >> temp;
+  ttmp = hexToPublicKey(temp);
+  std::copy(temp.begin(), temp.end(), dhPublicKey);
+  alice.initDoubleRatchet(alice_session_key, dhPublicKey);
   int send;
   std::cout << "send or recive message 1 o send";
   std::cin >> send;
@@ -87,31 +90,38 @@ int main(int argc, char *argv[]) {
   if (send == 1) {
     const char *message = " hiiii";
     unsigned char *chiphertext = nullptr;
-    size_t chiphertextLen = 0;
     unsigned char nounce[NONCE_BYTES];
 
+    size_t chiphertextLen = 0;
     if (!alice.dratchet.encryptMessage(
             reinterpret_cast<const unsigned char *>(message), strlen(message),
             chiphertext, chiphertextLen, nounce)) {
       std::cerr << "error enctry";
       return 1;
     }
+    std::cout << strlen(message);
+    std::cout << chiphertext;
+    std::cout << nounce;
+    std::cout << chiphertextLen;
   }
   if (send == 0) {
     unsigned char *decrypted = nullptr;
-    size_t drcypLen;
     unsigned char *chiphertext = nullptr;
     size_t chiphertextLen = 0;
+    std::cin >> chiphertextLen;
+    std::cin >> chiphertext;
     unsigned char nounce[NONCE_BYTES];
+    std::cin >> nounce;
 
     if (!alice.dratchet.decryptMessage(chiphertext, chiphertextLen, nounce,
-                                       decrypted, drcypLen)) {
+                                       decrypted, chiphertextLen)) {
       std::cerr << "decr fail";
       delete[] chiphertext;
       return 1;
     }
     std::cout << "decry`"
-              << std::string(reinterpret_cast<char *>(decrypted), drcypLen);
+              << std::string(reinterpret_cast<char *>(decrypted),
+                             chiphertextLen);
     delete[] chiphertext;
     delete[] decrypted;
   }

@@ -21,6 +21,7 @@ link_directories(${LIBSODIUM_LIBRARY_DIRS})
 # The main source is "example.cpp" in the project root.
 add_executable(signal signal.cpp )
 add_executable(aes aes.cpp)
+add_executable(test test.cpp)
 
 # (Optional) If you have additional source files in the src directory, you can add them:
 # file(GLOB SRC_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
@@ -29,4 +30,5 @@ add_executable(aes aes.cpp)
 # Link libsodium.
 target_link_libraries(signal ${LIBSODIUM_LIBRARIES})
 target_link_libraries(aes ${LIBSODIUM_LIBRARIES})
+target_link_libraries(test ${LIBSODIUM_LIBRARIES})
 
