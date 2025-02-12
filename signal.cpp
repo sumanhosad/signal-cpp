@@ -1,6 +1,8 @@
 #include "includes/signal.h" // Contains the Signal class with key generation and double ratchet.
+#include "includes/printHex.h"
 #include "includes/x3dh.h" // Contains conversion helpers and X3DH functions.
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <sodium.h>
 
@@ -72,19 +74,28 @@ int main() {
 
   // --- Message Encryption/Decryption using Double Ratchet ---
   // Alice encrypts a message using her double ratchet state.
-  const char *message = "Hello Bob, this is Alice.";
+  const char *message = "Hello Bob, this is Alicfbkbjsdfhfhjshghe.";
   unsigned char *ciphertext = nullptr;
   size_t ciphertextLen = 0;
   unsigned char nonce[NONCE_BYTES];
-
+  printHex(alice.dratchet.dhPublicKey, "dh public");
+  printHex(alice_session_key, "alice session keyb");
   if (!alice.dratchet.encryptMessage(
           reinterpret_cast<const unsigned char *>(message), strlen(message),
           ciphertext, ciphertextLen, nonce)) {
     std::cerr << "Alice failed to encrypt the message." << std::endl;
     return 1;
   }
-  std::cout << "\nAlice encrypted a message." << std::endl;
 
+  // Print the ciphertext in hexadecimal format.
+  std::cout << "Ciphertext: ";
+  for (size_t i = 0; i < ciphertextLen; ++i) {
+    // Print each byte as a two-digit hex number.
+    std::cout << std::hex << std::setw(2) << std::setfill('0')
+              << static_cast<int>(ciphertext[i]);
+  }
+  std::cout << std::dec << std::endl;
+  std::cout << "\nAlice encrypted a message." << std::endl;
   // Bob decrypts the message using his double ratchet state.
   unsigned char *decrypted = nullptr;
   size_t decryptedLen = 0;

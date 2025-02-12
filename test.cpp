@@ -1,40 +1,11 @@
 #include "includes/printHex.h"
 #include "includes/signal.h"
+#include "includes/stringtohex.h"
 #include "includes/x3dh.h"
-#include <array>
 #include <cstddef>
 #include <iostream>
 #include <sodium/crypto_box.h>
 #include <string>
-
-std::array<unsigned char, crypto_box_PUBLICKEYBYTES>
-hexToPublicKey(const std::string &hex) {
-  // The expected hex string length is 2 characters per byte.
-  if (hex.size() != crypto_box_PUBLICKEYBYTES * 2) {
-    throw std::invalid_argument("Hex string must be exactly " +
-                                std::to_string(crypto_box_PUBLICKEYBYTES * 2) +
-                                " characters long.");
-  }
-
-  std::array<unsigned char, crypto_box_PUBLICKEYBYTES> publicKey{};
-  size_t binLen = 0;
-
-  // Convert the hex string to binary.
-  // The ignore parameter is set to nullptr since there are no characters to
-  // ignore.
-  if (sodium_hex2bin(publicKey.data(), publicKey.size(), hex.c_str(),
-                     hex.size(), nullptr, &binLen, nullptr) != 0) {
-    throw std::runtime_error("Failed to convert hex string to binary data.");
-  }
-
-  // Validate that the binary length matches the expected public key size.
-  if (binLen != crypto_box_PUBLICKEYBYTES) {
-    throw std::runtime_error(
-        "Binary data length does not match crypto_box_PUBLICKEYBYTES.");
-  }
-
-  return publicKey;
-}
 
 int main(int argc, char *argv[]) {
   if (sodium_init() < 0) {
@@ -47,23 +18,33 @@ int main(int argc, char *argv[]) {
     std::cerr << "Alice key generation failed." << std::endl;
     return 1;
   }
-  unsigned char publicKey[crypto_box_PUBLICKEYBYTES]; // 32 bytes
+  unsigned char *publicKey; // 32 bytes
   unsigned char identityPublicKey[crypto_sign_PUBLICKEYBYTES];
   unsigned char signedPrePublicKey[crypto_box_PUBLICKEYBYTES];
   unsigned char dhPublicKey[crypto_box_PUBLICKEYBYTES];
   alice.printAllKeys();
   std::cout << "identityKey";
   std::cin >> temp;
-  auto ttmp = hexToPublicKey(temp);
-  std::copy(temp.begin(), temp.end(), identityPublicKey);
+  std::cout << temp;
+  std::cout << std::endl;
+  publicKey = hexStringToPublicKey(temp);
+  std::cout << std::endl;
+  std::cout << alice.identityPublicKey;
+  std::cout << std::endl;
+  std::cout << publicKey;
+  /*std::cin >> temp;*/
+  /*auto ttmp = hexToPublicKey(temp);*/
+  /*std::copy(temp.begin(), temp.end(), identityPublicKey);*/
   std::cout << "spk";
-  std::cin >> temp;
-  ttmp = hexToPublicKey(temp);
-  std::copy(temp.begin(), temp.end(), signedPrePublicKey);
+  std::cin >> signedPrePublicKey;
+  /*std::cin >> temp;*/
+  /*ttmp = hexToPublicKey(temp);*/
+  /*std::copy(temp.begin(), temp.end(), signedPrePublicKey);*/
   std::cout << "otp";
-  std::cin >> temp;
-  ttmp = hexToPublicKey(temp);
-  std::copy(temp.begin(), temp.end(), publicKey);
+  std::cin >> publicKey;
+  /*std::cin >> temp;*/
+  /*ttmp = hexToPublicKey(temp);*/
+  /*std::copy(temp.begin(), temp.end(), publicKey);*/
 
   unsigned char alice_session_key[X3DH_SESSION_KEY_BYTES];
   if (x3dh_compute_session_key(
@@ -79,9 +60,10 @@ int main(int argc, char *argv[]) {
   }
   printHex(alice.dratchet.dhPublicKey, "dh public");
   std::cout << "dh puclic key";
-  std::cin >> temp;
-  ttmp = hexToPublicKey(temp);
-  std::copy(temp.begin(), temp.end(), dhPublicKey);
+  std::cin >> dhPublicKey;
+  /*std::cin >> temp;*/
+  /*ttmp = hexToPublicKey(temp);*/
+  /*std::copy(temp.begin(), temp.end(), dhPublicKey);*/
   alice.initDoubleRatchet(alice_session_key, dhPublicKey);
   int send;
   std::cout << "send or recive message 1 o send";
