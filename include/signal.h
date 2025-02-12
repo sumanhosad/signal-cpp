@@ -1,47 +1,33 @@
 #ifndef SIGNAL_H
 #define SIGNAL_H
 
-#include "doubleratchet.h" // Double ratchet implementation.
-#include "generateKeyPair.h" // Contains SignalKeyGenerator with key generation routines.
-#include "printHex.h" // Helper for printing byte arrays.
-#include "x3dh.h"     // Contains conversion helpers and X3DH functions.
-#include <iostream>
-#include <sodium.h>
-#include <string>
-#include <vector>
+#include "doubleratchet.h"
+#include "generateKeys.h"
+#include "printHex.h"
+#include "x3dh.h"
+#include <sodium/crypto_box.h>
+#include <sodium/crypto_scalarmult.h>
 
-class Signal : public SignalKeyGenerator {
+class signal : SignalKeyGenerator {
 public:
-  // Ephemeral key (Curve25519) used for one-time session establishment.
   EphemeralKey ephemeralKey;
-
-  // Instance of the double ratchet.
   DoubleRatchet dratchet;
-
-  // Generates all required keys:
-  // - Identity key pair (Ed25519),
-  // - Signed pre key pair (Curve25519, signed with the identity key),
-  // - A batch of one-time pre keys (Curve25519), and
-  // - An ephemeral key pair (Curve25519) for immediate session establishment.
   bool generateAllKeys(size_t oneTimeKeyCount = 5) {
-    if (!generateIdentityKey()) {
-      std::cerr << "Failed to generate identity key pair." << std::endl;
+    if (!generateAllKeys()) {
+      std::cerr << "1";
       return false;
     }
     if (!generateSignedPreKey()) {
-      std::cerr << "Failed to generate signed pre key pair." << std::endl;
+      std::cerr << "2";
       return false;
     }
     if (!generateOneTimePreKeys(oneTimeKeyCount)) {
-      std::cerr << "Failed to generate one-time pre keys." << std::endl;
+      std::cerr << "3";
       return false;
     }
-    // Generate an ephemeral key pair for session establishment.
     ephemeralKey = generateEphemeralKey();
     return true;
   }
-
-  // Prints all the gererated keys in hexadecimal format.
   void printAllKeys() {
     printHex(identityPrivateKey, "Identity Private Key (Ed25519)");
     printHex(identityPublicKey, "Identity Public Key (Ed25519)");
@@ -59,50 +45,31 @@ public:
       printHex(oneTimePreKeys[i].privateKey, labelPriv.c_str());
     }
 
-    // Print the ephemeral key pair.
     printHex(ephemeralKey.privateKey, "Ephemeral Key Private (Curve25519)");
     printHex(ephemeralKey.publicKey, "Ephemeral Key Public (Curve25519)");
   }
 
-  // Verifies that the signed pre key's public component was properly signed
-  // by the identity key.
-  bool verifySignedPreKeySignature() { return verifySignedPreKey(); }
+  bool varifySignedPreKeySignature() { return verifySignedPreKey(); }
 
-  // --- Compute Session Key Responder ---
-  // This function implements Bob's side of the X3DH key agreement by
-  // performing:
-  //   DH1 = DH(bob.signedPrePrivateKey, convert(alice.identityPublicKey))
-  //   DH2 = DH(convert(bob.identityPrivateKey), alice.ephemeralKey.publicKey)
-  //   DH3 = DH(bob.signedPrePrivateKey, alice.ephemeralKey.publicKey)
-  //   DH4 = DH(bob.oneTimePreKey.privateKey, alice.ephemeralKey.publicKey) [if
-  //   available]
-  // The concatenated DH outputs are used with x3dh_kdf() to derive the session
-  // key.
   bool
-  computeSessionKeyResponder(const Signal &initiator,
+  computeSessionKeyResponder(const signal &initiator,
                              unsigned char sessionKey[X3DH_SESSION_KEY_BYTES]) {
     unsigned char dh1[X3DH_DH_OUTPUT_BYTES];
     unsigned char dh2[X3DH_DH_OUTPUT_BYTES];
     unsigned char dh3[X3DH_DH_OUTPUT_BYTES];
     unsigned char dh4[X3DH_DH_OUTPUT_BYTES];
 
-    // --- DH1: DH(bob.signedPrePrivateKey, convert(alice.identityPublicKey to
-    // X25519)) ---
     unsigned char initiator_identity_x25519[crypto_box_PUBLICKEYBYTES];
     if (ed25519_pk_to_x25519(initiator_identity_x25519,
                              initiator.identityPublicKey) != 0) {
-      std::cerr << "Conversion of initiator's identity public key failed."
-                << std::endl;
+      std::cerr << "4";
       return false;
     }
     if (crypto_scalarmult(dh1, this->signedPrePrivateKey,
                           initiator_identity_x25519) != 0) {
-      std::cerr << "Responder DH1 computation failed." << std::endl;
+      std::cerr << "5";
       return false;
     }
-
-    // --- DH2: DH(convert(bob.identityPrivateKey to X25519),
-    // alice.ephemeralKey.publicKey) ---
     unsigned char responder_identity_x25519[crypto_box_SECRETKEYBYTES];
     if (ed25519_sk_to_x25519(responder_identity_x25519,
                              this->identityPrivateKey) != 0) {
@@ -123,7 +90,6 @@ public:
       return false;
     }
 
-    // --- Concatenate DH outputs ---
     unsigned char concat[4 * X3DH_DH_OUTPUT_BYTES];
     size_t total_len = 0;
     memcpy(concat, dh1, X3DH_DH_OUTPUT_BYTES);
@@ -150,10 +116,6 @@ public:
     return true;
   }
 
-  // --- Double Ratchet Initialization ---
-  // After the X3DH handshake, use the derived session key as the root key for
-  // the double ratchet. The remote party's double ratchet DH public key must be
-  // exchanged; here we pass it as a parameter.
   void initDoubleRatchet(
       const unsigned char initialSessionKey[X3DH_SESSION_KEY_BYTES],
       const unsigned char remoteDHPublicKey[crypto_box_PUBLICKEYBYTES]) {
