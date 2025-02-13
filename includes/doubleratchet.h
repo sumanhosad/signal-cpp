@@ -203,4 +203,3 @@ public:
 };
 
 #endif // DOUBLERATCHET_H
-
