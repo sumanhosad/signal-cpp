@@ -2,6 +2,6 @@
 
 ---
 
-Not yet fully completed but stay tuned for update!!!
+an attempt to create library for signal protocol using libsodium
 
 ---
