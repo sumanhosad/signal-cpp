@@ -23,12 +23,6 @@ int main() {
     return 1;
   }
 
-  // (Optional) Print generated keys for debugging.
-  std::cout << "\nAlice's keys:" << std::endl;
-  alice.printAllKeys();
-  std::cout << "\nBob's keys:" << std::endl;
-  bob.printAllKeys();
-
   // --- X3DH Key Agreement ---
   // Alice computes her session key.
   unsigned char alice_session_key[X3DH_SESSION_KEY_BYTES];
@@ -75,8 +69,6 @@ int main() {
   unsigned char *ciphertext = nullptr;
   size_t ciphertextLen = 0;
   unsigned char nonce[NONCE_BYTES];
-  printHex(alice.dratchet.dhPublicKey, "dh public");
-  printHex(alice_session_key, "alice session keyb");
   if (!alice.dratchet.encryptMessage(
           reinterpret_cast<const unsigned char *>(message), strlen(message),
           ciphertext, ciphertextLen, nonce)) {
@@ -84,14 +76,6 @@ int main() {
     return 1;
   }
 
-  // Print the ciphertext in hexadecimal format.
-  std::cout << "Ciphertext: ";
-  for (size_t i = 0; i < ciphertextLen; ++i) {
-    // Print each byte as a two-digit hex number.
-    std::cout << std::hex << std::setw(2) << std::setfill('0')
-              << static_cast<int>(ciphertext[i]);
-  }
-  std::cout << std::dec << std::endl;
   std::cout << "\nAlice encrypted a message." << std::endl;
   // Bob decrypts the message using his double ratchet state.
   unsigned char *decrypted = nullptr;
