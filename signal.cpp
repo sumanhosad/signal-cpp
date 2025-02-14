@@ -1,10 +1,7 @@
 #include "includes/signal.h" // Contains the Signal class with key generation and double ratchet.
 #include "includes/printHex.h"
 #include "includes/x3dh.h" // Contains conversion helpers and X3DH functions.
-#include <cstring>
 #include <iomanip>
-#include <iostream>
-#include <sodium.h>
 
 int main() {
   // Initialize libsodium.
