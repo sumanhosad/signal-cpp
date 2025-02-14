@@ -1,7 +1,7 @@
 #ifndef DOUBLERATCHET_H
 #define DOUBLERATCHET_H
 
-#include "aes.h" // Use the external AES-GCM functions defined in aes.h
+#include "encryption.h" // Uses the libsodiumEncrypt/libsodiumDecrypt functions defined above
 #include <cstddef>
 #include <cstring>
 #include <iostream>
@@ -12,8 +12,10 @@
 #define CHAIN_KEY_BYTES 32
 #define MESSAGE_KEY_BYTES 32
 #define DH_OUTPUT_BYTES 32
-#define NONCE_BYTES crypto_aead_chacha20poly1305_IETF_NPUBBYTES
-#define MAC_BYTES crypto_aead_chacha20poly1305_IETF_ABYTES
+// Use the nonce and MAC sizes for XChaCha20-Poly1305 as used in the above
+// encryption functions.
+#define NONCE_BYTES crypto_aead_xchacha20poly1305_ietf_NPUBBYTES
+#define MAC_BYTES crypto_aead_xchacha20poly1305_ietf_ABYTES
 
 // DoubleRatchet implements a simplified version of the double ratchet
 // algorithm. It maintains a root key (updated by DH ratchet steps) and two
@@ -149,14 +151,18 @@ public:
   }
 
   // --- Encrypt a Message ---
-  // Derives a message key from the sending chain and uses the aes.h functions
-  // to encrypt the plaintext using AES-GCM. A random nonce is generated.
+  // Derives a message key from the sending chain and uses the above
+  // libsodiumEncrypt function (which internally uses XChaCha20-Poly1305)
+  // to encrypt the plaintext.
   // Parameters:
-  //   plaintext/plaintextLen: message to encrypt.
-  //   ciphertext: pointer reference to the allocated ciphertext buffer
-  //   (allocated via malloc). ciphertextLen: length of ciphertext (plaintext
-  //   length plus authentication tag). nonce: output nonce used during
-  //   encryption.
+  //   plaintext / plaintextLen: the message to encrypt.
+  //   ciphertext: reference to an allocated ciphertext buffer (allocated via
+  //   new[]),
+  //               which will contain only the encrypted payload (nonce is
+  //               stored separately).
+  //   ciphertextLen: length of the ciphertext.
+  //   nonce: output nonce used during encryption (extracted from the encryption
+  //   result).
   // Returns true on success.
   bool encryptMessage(const unsigned char *plaintext, size_t plaintextLen,
                       unsigned char *&ciphertext, size_t &ciphertextLen,
@@ -164,26 +170,43 @@ public:
     unsigned char messageKey[MESSAGE_KEY_BYTES];
     advanceSendingChain(messageKey);
 
-    // Generate random nonce.
-    randombytes_buf(nonce, NONCE_BYTES);
+    // Convert the plaintext and message key into std::string objects.
+    std::string pt(reinterpret_cast<const char *>(plaintext), plaintextLen);
+    std::string keyStr(reinterpret_cast<const char *>(messageKey),
+                       MESSAGE_KEY_BYTES);
 
-    // Use the AES-GCM encryption function defined in aes.h.
-    ciphertext = aes_gcm_encrypt(plaintext, plaintextLen, messageKey, nonce,
-                                 &ciphertextLen);
-    if (ciphertext == NULL) {
-      std::cerr << "Encryption failed in AES-GCM." << std::endl;
+    // Encrypt using the above function; the output contains the nonce
+    // prepended.
+    std::string encrypted = libsodiumEncrypt(pt, keyStr);
+
+    if (encrypted.size() < NONCE_BYTES) {
+      std::cerr << "Encryption output is too short." << std::endl;
       return false;
     }
+
+    // Extract and copy the nonce.
+    memcpy(nonce, encrypted.data(), NONCE_BYTES);
+
+    // The remainder is the ciphertext.
+    size_t ct_len = encrypted.size() - NONCE_BYTES;
+    ciphertextLen = ct_len;
+    ciphertext = new unsigned char[ct_len];
+    memcpy(ciphertext, encrypted.data() + NONCE_BYTES, ct_len);
+
     return true;
   }
 
   // --- Decrypt a Message ---
-  // Derives a message key from the receiving chain and uses the aes.h functions
-  // to decrypt the ciphertext using AES-GCM. Parameters:
-  //   ciphertext/ciphertextLen: the encrypted message.
-  //   nonce: nonce used during encryption.
-  //   plaintext: pointer reference to the allocated plaintext buffer (allocated
-  //   via malloc). plaintextLen: length of the decrypted plaintext.
+  // Derives a message key from the receiving chain and uses the above
+  // libsodiumDecrypt function (which internally uses XChaCha20-Poly1305)
+  // to decrypt the ciphertext.
+  // Parameters:
+  //   ciphertext / ciphertextLen: the encrypted message payload.
+  //   nonce: the nonce used during encryption.
+  //   plaintext: reference to an allocated plaintext buffer (allocated via
+  //   new[]),
+  //              which will contain the decrypted message.
+  //   plaintextLen: length of the decrypted plaintext.
   // Returns true on success.
   bool decryptMessage(const unsigned char *ciphertext, size_t ciphertextLen,
                       const unsigned char nonce[NONCE_BYTES],
@@ -191,15 +214,29 @@ public:
     unsigned char messageKey[MESSAGE_KEY_BYTES];
     advanceReceivingChain(messageKey);
 
-    // Use the AES-GCM decryption function defined in aes.h.
-    plaintext = aes_gcm_decrypt(ciphertext, ciphertextLen, messageKey, nonce,
-                                &plaintextLen);
-    if (plaintext == NULL) {
-      std::cerr << "Decryption failed in AES-GCM." << std::endl;
+    // Reconstruct the full encrypted message (nonce prepended to ciphertext).
+    std::string encrypted;
+    encrypted.resize(NONCE_BYTES + ciphertextLen);
+    memcpy(&encrypted[0], nonce, NONCE_BYTES);
+    memcpy(&encrypted[0] + NONCE_BYTES, ciphertext, ciphertextLen);
+
+    std::string keyStr(reinterpret_cast<const char *>(messageKey),
+                       MESSAGE_KEY_BYTES);
+    std::string decrypted;
+    try {
+      decrypted = libsodiumDecrypt(encrypted, keyStr);
+    } catch (const std::exception &e) {
+      std::cerr << "Decryption failed: " << e.what() << std::endl;
       return false;
     }
+
+    plaintextLen = decrypted.size();
+    plaintext = new unsigned char[plaintextLen];
+    memcpy(plaintext, decrypted.data(), plaintextLen);
+
     return true;
   }
 };
 
 #endif // DOUBLERATCHET_H
+

@@ -63,5 +63,56 @@ inline std::string libsodiumEncrypt(const std::string &plaintext,
   return result;
 }
 
+// Decrypts a message that was encrypted using libsodiumEncrypt.
+// Parameters:
+//   - cipherWithNonce: The string containing the nonce (first 24 bytes)
+//   followed by the ciphertext.
+//   - key: A 32-byte encryption key.
+// Returns:
+//   The decrypted plaintext as a std::string.
+// Throws:
+//   std::runtime_error if decryption fails or if key size is incorrect.
+inline std::string libsodiumDecrypt(const std::string &cipherWithNonce,
+                                    const std::string &key) {
+  if (key.size() != crypto_aead_xchacha20poly1305_ietf_KEYBYTES) {
+    throw std::runtime_error("Key must be 32 bytes for XChaCha20-Poly1305");
+  }
+
+  // Ensure the input is long enough to contain the nonce.
+  if (cipherWithNonce.size() < crypto_aead_xchacha20poly1305_ietf_NPUBBYTES) {
+    throw std::runtime_error("Ciphertext is too short to contain a nonce");
+  }
+
+  // Extract the nonce (first 24 bytes).
+  const unsigned char *nonce =
+      reinterpret_cast<const unsigned char *>(cipherWithNonce.data());
+
+  // Extract the ciphertext that follows the nonce.
+  std::string ciphertext =
+      cipherWithNonce.substr(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+
+  // Prepare buffer for the decrypted plaintext.
+  std::string plaintext;
+  // Maximum possible plaintext length is ciphertext length.
+  plaintext.resize(ciphertext.size());
+
+  unsigned long long plaintext_len = 0;
+
+  // Perform decryption.
+  int ret = crypto_aead_xchacha20poly1305_ietf_decrypt(
+      reinterpret_cast<unsigned char *>(&plaintext[0]), &plaintext_len, nullptr,
+      reinterpret_cast<const unsigned char *>(ciphertext.data()),
+      ciphertext.size(), nullptr, 0, // No additional data.
+      nonce, reinterpret_cast<const unsigned char *>(key.data()));
+
+  if (ret != 0) {
+    throw std::runtime_error("Decryption failed");
+  }
+
+  // Resize plaintext to the actual length.
+  plaintext.resize(plaintext_len);
+  return plaintext;
+}
+
 #endif // LIBSODIUM_ENCRYPTOR_H
 
