@@ -1,94 +1,67 @@
-#ifndef AES_H
-#define AES_H
+#ifndef LIBSODIUM_ENCRYPTOR_H
+#define LIBSODIUM_ENCRYPTOR_H
 
 #include <sodium.h>
-#include <stddef.h>
-#include <stdlib.h>
-#include <string.h>
+#include <stdexcept>
+#include <string>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+// Ensure that libsodium is initialized before using any crypto functions.
+// This helper function can be called at the start of your application.
+inline void initializeLibsodium() {
+  if (sodium_init() < 0) {
+    throw std::runtime_error("Failed to initialize libsodium");
+  }
+}
 
-// Encrypts a plaintext using AES-GCM (AES-256-GCM) via libsodium.
+// Encrypts the input plaintext using XChaCha20-Poly1305 AEAD.
 // Parameters:
-//   plaintext      - pointer to the message bytes to encrypt.
-//   plaintext_len  - length of the plaintext.
-//   key            - AES key; must be crypto_aead_aes256gcm_KEYBYTES bytes
-//   long. nonce          - Nonce value; must be crypto_aead_aes256gcm_NPUBBYTES
-//   bytes long. ciphertext_len - Pointer to a size_t where the ciphertext
-//   length will be stored.
+//   - plaintext: The data to be encrypted.
+//   - key: A 32-byte encryption key.
 // Returns:
-//   Pointer to a newly allocated buffer containing the ciphertext (which
-//   includes the authentication tag). Returns NULL on error. The caller must
-//   free the returned buffer with free().
-unsigned char *
-aes_gcm_encrypt(const unsigned char *plaintext, size_t plaintext_len,
-                const unsigned char key[crypto_aead_aes256gcm_KEYBYTES],
-                const unsigned char nonce[crypto_aead_aes256gcm_NPUBBYTES],
-                size_t *ciphertext_len) {
-  if (crypto_aead_aes256gcm_is_available() == 0)
-    return NULL;
-
-  unsigned long long clen = plaintext_len + crypto_aead_aes256gcm_ABYTES;
-  unsigned char *ciphertext = (unsigned char *)malloc(clen);
-  if (ciphertext == NULL)
-    return NULL;
-
-  if (crypto_aead_aes256gcm_encrypt(ciphertext, &clen, plaintext, plaintext_len,
-                                    NULL, 0, // no additional data
-                                    NULL,    // no secret nonce
-                                    nonce, key) != 0) {
-    free(ciphertext);
-    return NULL;
+//   A std::string containing the nonce (first 24 bytes) followed by the
+//   ciphertext.
+// Throws:
+//   std::runtime_error if encryption fails or if key size is incorrect.
+inline std::string libsodiumEncrypt(const std::string &plaintext,
+                                    const std::string &key) {
+  if (key.size() != crypto_aead_xchacha20poly1305_ietf_KEYBYTES) {
+    throw std::runtime_error("Key must be 32 bytes for XChaCha20-Poly1305");
   }
 
-  if (ciphertext_len)
-    *ciphertext_len = (size_t)clen;
+  // Generate a random nonce.
+  unsigned char nonce[crypto_aead_xchacha20poly1305_ietf_NPUBBYTES];
+  randombytes_buf(nonce, sizeof nonce);
 
-  return ciphertext;
-}
+  // Calculate maximum ciphertext length.
+  unsigned long long ciphertext_len = 0;
+  size_t ciphertext_size =
+      plaintext.size() + crypto_aead_xchacha20poly1305_ietf_ABYTES;
+  std::string ciphertext;
+  ciphertext.resize(ciphertext_size);
 
-// Decrypts a ciphertext using AES-GCM (AES-256-GCM) via libsodium.
-// Parameters:
-//   ciphertext     - pointer to the ciphertext (includes the authentication
-//   tag). ciphertext_len - length of the ciphertext. key            - AES key;
-//   must be crypto_aead_aes256gcm_KEYBYTES bytes long. nonce          - Nonce
-//   used during encryption; must be crypto_aead_aes256gcm_NPUBBYTES bytes long.
-//   plaintext_len  - Pointer to a size_t where the plaintext length will be
-//   stored.
-// Returns:
-//   Pointer to a newly allocated buffer containing the decrypted plaintext.
-//   Returns NULL on error (for example, if decryption fails).
-//   The caller must free the returned buffer with free().
-unsigned char *
-aes_gcm_decrypt(const unsigned char *ciphertext, size_t ciphertext_len,
-                const unsigned char key[crypto_aead_aes256gcm_KEYBYTES],
-                const unsigned char nonce[crypto_aead_aes256gcm_NPUBBYTES],
-                size_t *plaintext_len) {
-  if (crypto_aead_aes256gcm_is_available() == 0)
-    return NULL;
+  // Perform encryption.
+  int ret = crypto_aead_xchacha20poly1305_ietf_encrypt(
+      reinterpret_cast<unsigned char *>(&ciphertext[0]), &ciphertext_len,
+      reinterpret_cast<const unsigned char *>(plaintext.data()),
+      plaintext.size(), nullptr, 0, // No additional data.
+      nullptr,                      // No secret nonce.
+      nonce,                        // Public nonce.
+      reinterpret_cast<const unsigned char *>(key.data()));
 
-  // Maximum possible plaintext length is ciphertext_len minus the tag length.
-  unsigned long long mlen = ciphertext_len - crypto_aead_aes256gcm_ABYTES;
-  unsigned char *plaintext = (unsigned char *)malloc(mlen);
-  if (plaintext == NULL)
-    return NULL;
-
-  if (crypto_aead_aes256gcm_decrypt(plaintext, &mlen, NULL, ciphertext,
-                                    ciphertext_len, NULL, 0, nonce, key) != 0) {
-    free(plaintext);
-    return NULL;
+  if (ret != 0) {
+    throw std::runtime_error("Encryption failed");
   }
 
-  if (plaintext_len)
-    *plaintext_len = (size_t)mlen;
+  // Resize ciphertext to actual length.
+  ciphertext.resize(ciphertext_len);
 
-  return plaintext;
+  // Prepend the nonce to the ciphertext for use in decryption.
+  std::string result(reinterpret_cast<char *>(nonce),
+                     crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+  result.append(ciphertext);
+
+  return result;
 }
 
-#ifdef __cplusplus
-}
-#endif
+#endif // LIBSODIUM_ENCRYPTOR_H
 
-#endif // AES_H
